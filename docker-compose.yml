@@ -24,6 +24,14 @@ services:
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
       - ${DATA_ROOT}/traefik/letsencrypt:/letsencrypt
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.traefik.rule: "Host(`traefik.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.traefik.entrypoints: "websecure"
+      traefik.http.routers.traefik.tls: "true"
+      traefik.http.routers.traefik.tls.certresolver: "cloudflare"
+      traefik.http.routers.traefik.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.routers.traefik.service: "api@internal"
 
   cloudflared:
     image: cloudflare/cloudflared:2026.3.0
