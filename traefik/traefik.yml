@@ -1,0 +1,46 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  level: INFO
+
+accessLog: {}
+
+api:
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: media-center
+    watch: true
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      # Email is supplied via CLI override on the docker command so it can read ${EXTERNAL_DOMAIN}.
+      storage: /letsencrypt/acme.json
+      # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+      dnsChallenge:
+        provider: cloudflare
+        # Resolvers used to follow the delegated _acme-challenge CNAME.
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"

@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.local
+*.tfvars
+!*.example.tfvars
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Runtime data
+data/
+acme/
+letsencrypt/
+
+# Internal runbooks / notes
+TODO.md
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp

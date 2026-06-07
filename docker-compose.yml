@@ -1,0 +1,158 @@
+name: media-center
+
+networks:
+  media-center:
+    name: media-center
+    driver: bridge
+
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      - media-center
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - "--certificatesresolvers.cloudflare.acme.email=acme@${EXTERNAL_DOMAIN}"
+    environment:
+      CF_DNS_API_TOKEN: ${CLOUDFLARE_DNS_API_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ${DATA_ROOT}/traefik/letsencrypt:/letsencrypt
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.3.0
+    container_name: cloudflared
+    restart: unless-stopped
+    networks:
+      - media-center
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - plex
+      - audiobookshelf
+      - calibre-web
+      - komga
+
+  plex:
+    image: lscr.io/linuxserver/plex:1.43.0.10492-121068a07-ls297
+    container_name: plex
+    restart: unless-stopped
+    networks:
+      - media-center
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      VERSION: docker
+      PLEX_CLAIM: ${PLEX_CLAIM}
+      # Tell Plex which URLs to advertise to clients.
+      # Without this it advertises its bridge IP, which is unreachable from anywhere.
+      ADVERTISE_IP: "https://plex.${INTERNAL_DOMAIN}:443,https://plex.${EXTERNAL_DOMAIN}:443"
+    volumes:
+      - ${DATA_ROOT}/plex/config:/config
+      - "/Volumes/Media-1/Video:/data/video/media-1:ro"
+      - "/Volumes/Media-2/Video:/data/video/media-2:ro"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.plex.rule: "Host(`plex.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.plex.entrypoints: "websecure"
+      traefik.http.routers.plex.tls: "true"
+      traefik.http.routers.plex.tls.certresolver: "cloudflare"
+      traefik.http.routers.plex.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.services.plex.loadbalancer.server.port: "32400"
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:10.11.6ubu2404-ls25
+    container_name: jellyfin
+    restart: unless-stopped
+    networks:
+      - media-center
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      JELLYFIN_PublishedServerUrl: "https://jellyfin.${INTERNAL_DOMAIN}"
+    volumes:
+      - ${DATA_ROOT}/jellyfin/config:/config
+      - "/Volumes/Media-1/Video:/data/video/media-1"
+      - "/Volumes/Media-2/Video:/data/video/media-2"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.jellyfin.rule: "Host(`jellyfin.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.jellyfin.entrypoints: "websecure"
+      traefik.http.routers.jellyfin.tls: "true"
+      traefik.http.routers.jellyfin.tls.certresolver: "cloudflare"
+      traefik.http.routers.jellyfin.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.services.jellyfin.loadbalancer.server.port: "8096"
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:2.33.1
+    container_name: audiobookshelf
+    restart: unless-stopped
+    networks:
+      - media-center
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_ROOT}/audiobookshelf/config:/config
+      - ${DATA_ROOT}/audiobookshelf/metadata:/metadata
+      - "/Volumes/Media-1/Audio/Audiobooks:/audiobooks/media-1"
+      - "/Volumes/Media-2/Audio/Audiobooks:/audiobooks/media-2"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.audiobookshelf.rule: "Host(`audiobookshelf.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.audiobookshelf.entrypoints: "websecure"
+      traefik.http.routers.audiobookshelf.tls: "true"
+      traefik.http.routers.audiobookshelf.tls.certresolver: "cloudflare"
+      traefik.http.routers.audiobookshelf.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.services.audiobookshelf.loadbalancer.server.port: "80"
+
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:0.6.26-ls375
+    container_name: calibre-web
+    restart: unless-stopped
+    networks:
+      - media-center
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_ROOT}/calibre-web/config:/config
+      - "/Volumes/Media-1/Digital Library:/books/media-1"
+      - "/Volumes/Media-2/Digital Library:/books/media-2"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.calibre.rule: "Host(`calibre.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.calibre.entrypoints: "websecure"
+      traefik.http.routers.calibre.tls: "true"
+      traefik.http.routers.calibre.tls.certresolver: "cloudflare"
+      traefik.http.routers.calibre.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.services.calibre.loadbalancer.server.port: "8083"
+
+  komga:
+    image: gotson/komga:1.24.1
+    container_name: komga
+    restart: unless-stopped
+    networks:
+      - media-center
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_ROOT}/komga/config:/config
+      - "/Volumes/Media-1/Comics:/data/comics/media-1"
+      - "/Volumes/Media-2/Comics:/data/comics/media-2"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.komga.rule: "Host(`komga.${INTERNAL_DOMAIN}`)"
+      traefik.http.routers.komga.entrypoints: "websecure"
+      traefik.http.routers.komga.tls: "true"
+      traefik.http.routers.komga.tls.certresolver: "cloudflare"
+      traefik.http.routers.komga.tls.domains[0].main: "*.${INTERNAL_DOMAIN}"
+      traefik.http.services.komga.loadbalancer.server.port: "25600"
